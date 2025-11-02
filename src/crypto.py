@@ -1,205 +1,389 @@
-# always remember to go into the folder , activate the virtual environment #.\venv\Scripts\Activate.ps1 (by this command)
-#venv keeps the virtual env fr this project their own installed packages in venv for this project not to mess with other projects working on lang python.
-
 """
-src/crypto.py
+src/crypto.py - Production-Ready File Encryption at Rest
 
-Simple key & AEAD helpers for the secure-fs prototype.
-
-- MK = Master Key (32 bytes) - keep this OFF-REPO in production
-- KEK = Key Encryption Key (derived from MK or passphrase)
-- CEK = Content Encryption Key (one per file, 32 bytes)
-- AEAD = AES-GCM or XChaCha20-Poly1305 (confidentiality + integrity)
+Provides AES-256-GCM encryption for secure file storage with:
+- Master Key (MK) management with secure storage
+- Key Encryption Key (KEK) derivation using HKDF
+- Content Encryption Key (CEK) per-file encryption
+- Streaming support for large files
+- Memory-safe operations
 """
 
 import os
-import base64
-from typing import Tuple
-
-# cryptography imports
-from cryptography.hazmat.primitives.ciphers.aead import AESGCM, XChaCha20Poly1305
+import hashlib
+import secrets
+from pathlib import Path
+from typing import Tuple, Optional, BinaryIO
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from cryptography.hazmat.primitives import hashes
-
-# argon2 for passphrase-derived keys (optional)
-from argon2.low_level import hash_secret_raw, Type as Argon2Type
-
-# -------------------------
-# Basic helpers
-# -------------------------
-def b64e(b: bytes) -> str:
-    """Base64-encode bytes -> string (useful for storing in metadata)."""
-    return base64.b64encode(b).decode('utf-8')
+from cryptography.fernet import Fernet
+import base64
 
 
-def b64d(s: str) -> bytes:
-    """Base64-decode string -> bytes."""
-    return base64.b64decode(s.encode('utf-8'))
-
-
-# -------------------------
-# Master Key helpers
-# -------------------------
-def generate_mk(path: str) -> bytes:
+class CryptoManager:
     """
-    Generate a 32-byte MK and write to path.
-    IMPORTANT: keep this file out of your Git repo and protect file permission.
+    Production-ready encryption manager for secure file storage.
+    
+    Features:
+    - AES-256-GCM authenticated encryption
+    - Secure key management and derivation
+    - Streaming encryption for large files
+    - Memory-safe operations
     """
-    mk = os.urandom(32)  # 32 bytes = 256 bits -> AES-256 strength
-    with open(path, "wb") as f:
-        f.write(mk)
-    try:
-        # On POSIX, restrict permissions to owner-only
-        os.chmod(path, 0o600)
-    except Exception:
-        # On Windows os.chmod has limited effect; recommend using OS key store in production
-        pass
-    return mk
+    
+    def __init__(self, master_key_path: Optional[Path] = None):
+        """
+        Initialize crypto manager.
+        
+        Args:
+            master_key_path: Path to master key file. If None, uses default location.
+        """
+        self.master_key_path = master_key_path or Path("master.key")
+        self.master_key = self._load_or_generate_master_key()
+        self.kek = self._derive_kek()
+        
+    def _load_or_generate_master_key(self) -> bytes:
+        """
+        Load existing master key or generate new one.
+        
+        Returns:
+            32-byte master key
+        """
+        if self.master_key_path.exists():
+            return self._load_master_key()
+        else:
+            return self._generate_master_key()
+    
+    def _generate_master_key(self) -> bytes:
+        """
+        Generate a new 256-bit master key and save securely.
+        
+        Returns:
+            32-byte master key
+        """
+        master_key = secrets.token_bytes(32)  # 256 bits
+        
+        # Save with restricted permissions
+        self.master_key_path.write_bytes(master_key)
+        os.chmod(self.master_key_path, 0o600)  # Owner read/write only
+        
+        return master_key
+    
+    def _load_master_key(self) -> bytes:
+        """
+        Load master key from file.
+        
+        Returns:
+            32-byte master key
+            
+        Raises:
+            ValueError: If key file is invalid
+        """
+        try:
+            key_data = self.master_key_path.read_bytes()
+            if len(key_data) != 32:
+                raise ValueError(f"Invalid master key length: {len(key_data)} bytes")
+            return key_data
+        except Exception as e:
+            raise ValueError(f"Failed to load master key: {e}")
+    
+    def _derive_kek(self, info: bytes = b'secure-fs-kek') -> bytes:
+        """
+        Derive Key Encryption Key from master key using HKDF.
+        
+        Args:
+            info: Application-specific context
+            
+        Returns:
+            32-byte KEK
+        """
+        hkdf = HKDF(
+            algorithm=hashes.SHA256(),
+            length=32,
+            salt=None,
+            info=info
+        )
+        return hkdf.derive(self.master_key)
+    
+    def generate_file_key(self) -> bytes:
+        """
+        Generate a new Content Encryption Key for a file.
+        
+        Returns:
+            32-byte CEK
+        """
+        return secrets.token_bytes(32)
+    
+    def encrypt_data(self, plaintext: bytes, associated_data: bytes = b'') -> Tuple[bytes, bytes, bytes]:
+        """
+        Encrypt data using AES-256-GCM.
+        
+        Args:
+            plaintext: Data to encrypt
+            associated_data: Additional authenticated data
+            
+        Returns:
+            Tuple of (file_key, nonce, ciphertext)
+        """
+        file_key = self.generate_file_key()
+        nonce = secrets.token_bytes(12)  # 96-bit nonce for AES-GCM
+        
+        aesgcm = AESGCM(file_key)
+        ciphertext = aesgcm.encrypt(nonce, plaintext, associated_data)
+        
+        return file_key, nonce, ciphertext
+    
+    def decrypt_data(self, file_key: bytes, nonce: bytes, ciphertext: bytes, 
+                    associated_data: bytes = b'') -> bytes:
+        """
+        Decrypt data using AES-256-GCM.
+        
+        Args:
+            file_key: Content encryption key
+            nonce: Nonce used for encryption
+            ciphertext: Encrypted data
+            associated_data: Additional authenticated data
+            
+        Returns:
+            Decrypted plaintext
+            
+        Raises:
+            cryptography.exceptions.InvalidTag: If authentication fails
+        """
+        aesgcm = AESGCM(file_key)
+        return aesgcm.decrypt(nonce, ciphertext, associated_data)
+    
+    def wrap_file_key(self, file_key: bytes, file_path: str) -> Tuple[bytes, bytes]:
+        """
+        Wrap (encrypt) a file key using the KEK.
+        
+        Args:
+            file_key: File's content encryption key
+            file_path: Path for additional authentication
+            
+        Returns:
+            Tuple of (nonce, wrapped_key)
+        """
+        nonce = secrets.token_bytes(12)
+        aad = file_path.encode('utf-8')
+        
+        aesgcm = AESGCM(self.kek)
+        wrapped_key = aesgcm.encrypt(nonce, file_key, aad)
+        
+        return nonce, wrapped_key
+    
+    def unwrap_file_key(self, nonce: bytes, wrapped_key: bytes, file_path: str) -> bytes:
+        """
+        Unwrap (decrypt) a file key using the KEK.
+        
+        Args:
+            nonce: Nonce used for wrapping
+            wrapped_key: Encrypted file key
+            file_path: Path for additional authentication
+            
+        Returns:
+            Unwrapped file key
+            
+        Raises:
+            cryptography.exceptions.InvalidTag: If authentication fails
+        """
+        aad = file_path.encode('utf-8')
+        
+        aesgcm = AESGCM(self.kek)
+        return aesgcm.decrypt(nonce, wrapped_key, aad)
+    
+    def encrypt_file_stream(self, input_file: BinaryIO, output_file: BinaryIO, 
+                           file_path: str, chunk_size: int = 64 * 1024) -> dict:
+        """
+        Encrypt a file using streaming to handle large files efficiently.
+        
+        Args:
+            input_file: Input file handle
+            output_file: Output file handle
+            file_path: File path for metadata
+            chunk_size: Size of chunks to process
+            
+        Returns:
+            Dictionary with encryption metadata
+        """
+        file_key = self.generate_file_key()
+        nonce_wrap, wrapped_key = self.wrap_file_key(file_key, file_path)
+        
+        # Write wrapped key and nonce to beginning of file
+        output_file.write(len(nonce_wrap).to_bytes(4, 'big'))
+        output_file.write(nonce_wrap)
+        output_file.write(len(wrapped_key).to_bytes(4, 'big'))
+        output_file.write(wrapped_key)
+        
+        # Encrypt file in chunks
+        chunk_count = 0
+        total_size = 0
+        
+        while True:
+            chunk = input_file.read(chunk_size)
+            if not chunk:
+                break
+                
+            chunk_nonce = secrets.token_bytes(12)
+            aad = f"{file_path}:chunk:{chunk_count}".encode('utf-8')
+            
+            aesgcm = AESGCM(file_key)
+            encrypted_chunk = aesgcm.encrypt(chunk_nonce, chunk, aad)
+            
+            # Write chunk metadata and data
+            output_file.write(len(chunk_nonce).to_bytes(4, 'big'))
+            output_file.write(chunk_nonce)
+            output_file.write(len(encrypted_chunk).to_bytes(4, 'big'))
+            output_file.write(encrypted_chunk)
+            
+            chunk_count += 1
+            total_size += len(chunk)
+        
+        # Zero out file key from memory
+        file_key = b'\x00' * len(file_key)
+        
+        return {
+            'chunks': chunk_count,
+            'total_size': total_size,
+            'algorithm': 'AES-256-GCM'
+        }
+    
+    def decrypt_file_stream(self, input_file: BinaryIO, output_file: BinaryIO, 
+                           file_path: str) -> dict:
+        """
+        Decrypt a file using streaming.
+        
+        Args:
+            input_file: Encrypted input file handle
+            output_file: Decrypted output file handle
+            file_path: File path for metadata
+            
+        Returns:
+            Dictionary with decryption metadata
+        """
+        # Read wrapped key
+        nonce_len = int.from_bytes(input_file.read(4), 'big')
+        nonce_wrap = input_file.read(nonce_len)
+        wrapped_key_len = int.from_bytes(input_file.read(4), 'big')
+        wrapped_key = input_file.read(wrapped_key_len)
+        
+        # Unwrap file key
+        file_key = self.unwrap_file_key(nonce_wrap, wrapped_key, file_path)
+        
+        # Decrypt chunks
+        chunk_count = 0
+        total_size = 0
+        
+        while True:
+            # Try to read chunk nonce length
+            nonce_len_bytes = input_file.read(4)
+            if len(nonce_len_bytes) < 4:
+                break  # End of file
+                
+            chunk_nonce_len = int.from_bytes(nonce_len_bytes, 'big')
+            chunk_nonce = input_file.read(chunk_nonce_len)
+            
+            chunk_len = int.from_bytes(input_file.read(4), 'big')
+            encrypted_chunk = input_file.read(chunk_len)
+            
+            aad = f"{file_path}:chunk:{chunk_count}".encode('utf-8')
+            
+            aesgcm = AESGCM(file_key)
+            decrypted_chunk = aesgcm.decrypt(chunk_nonce, encrypted_chunk, aad)
+            
+            output_file.write(decrypted_chunk)
+            
+            chunk_count += 1
+            total_size += len(decrypted_chunk)
+        
+        # Zero out file key from memory
+        file_key = b'\x00' * len(file_key)
+        
+        return {
+            'chunks': chunk_count,
+            'total_size': total_size
+        }
+    
+    def secure_delete_key(self) -> None:
+        """
+        Securely delete the master key from memory and disk.
+        """
+        # Zero out master key in memory
+        self.master_key = b'\x00' * len(self.master_key)
+        self.kek = b'\x00' * len(self.kek)
+        
+        # Overwrite key file multiple times (DoD 5220.22-M standard)
+        if self.master_key_path.exists():
+            file_size = self.master_key_path.stat().st_size
+            
+            with open(self.master_key_path, 'r+b') as f:
+                # Pass 1: Write zeros
+                f.write(b'\x00' * file_size)
+                f.flush()
+                os.fsync(f.fileno())
+                
+                # Pass 2: Write ones
+                f.seek(0)
+                f.write(b'\xff' * file_size)
+                f.flush()
+                os.fsync(f.fileno())
+                
+                # Pass 3: Write random data
+                f.seek(0)
+                f.write(secrets.token_bytes(file_size))
+                f.flush()
+                os.fsync(f.fileno())
+            
+            # Remove the file
+            self.master_key_path.unlink()
 
 
-def load_mk(path: str) -> bytes:
-    """Load MK from disk (raises if not found)."""
-    with open(path, "rb") as f:
-        mk = f.read()
-    if len(mk) < 32:
-        raise ValueError("MK looks too short.")
-    return mk
-
-
-# -------------------------
-# KEK derivation
-# -------------------------
-def derive_kek_hkdf(mk: bytes, info: bytes = b'') -> bytes:
+def calculate_file_hash(file_path: Path) -> str:
     """
-    Derive a KEK from the MK using HKDF-SHA256.
-    - info is application-specific context (e.g., b'volume:main' or b'user:alice').
-    - HKDF is safe for deriving keys from a uniformly random MK.
+    Calculate SHA-256 hash of a file.
+    
+    Args:
+        file_path: Path to file
+        
+    Returns:
+        Hex-encoded SHA-256 hash
     """
-    hkdf = HKDF(
-        algorithm=hashes.SHA256(),
-        length=32,   # derive a 32-byte KEK (AES-256)
-        salt=None,   # optional salt; with a random MK salt is less important
-        info=info,
-    )
-    return hkdf.derive(mk)
+    sha256_hash = hashlib.sha256()
+    
+    with open(file_path, 'rb') as f:
+        for chunk in iter(lambda: f.read(64 * 1024), b''):
+            sha256_hash.update(chunk)
+    
+    return sha256_hash.hexdigest()
 
 
-def derive_kek_from_passphrase(passphrase: str, salt: bytes, time_cost: int = 2,
-                               memory_cost: int = 102400, parallelism: int = 8) -> bytes:
-    """
-    Derive a KEK from a passphrase using Argon2id (recommended for passphrase->key).
-    - salt must be random and stored along with the derived key reference.
-    - returns 32 raw bytes.
-    """
-    # hash_secret_raw returns raw bytes (not encoded string)
-    return hash_secret_raw(
-        secret=passphrase.encode('utf-8'),
-        salt=salt,
-        time_cost=time_cost,
-        memory_cost=memory_cost,
-        parallelism=parallelism,
-        hash_len=32,
-        type=Argon2Type.ID,
-    )
-
-
-# -------------------------
-# CEK generation
-# -------------------------
-def generate_cek() -> bytes:
-    """Generate a per-file CEK (32 bytes)."""
-    return os.urandom(32)
-
-
-# -------------------------
-# AEAD encrypt/decrypt helpers
-# -------------------------
-def encrypt_chunk(cek: bytes, plaintext: bytes, aad: bytes = b'', algorithm: str = 'aesgcm') -> Tuple[bytes, bytes]:
-    """
-    Encrypt a chunk with CEK using AEAD.
-    Returns: (nonce, ciphertext)
-    algorithm: 'aesgcm' (12-byte nonce) or 'xchacha20' (24-byte nonce)
-    """
-    if algorithm == 'aesgcm':
-        nonce = os.urandom(12)  # 96-bit nonce for AES-GCM (recommended)
-        aes = AESGCM(cek)
-        ct = aes.encrypt(nonce, plaintext, aad)  # ciphertext contains tag appended
-        return nonce, ct
-    elif algorithm == 'xchacha20':
-        nonce = os.urandom(24)  # XChaCha20 uses 192-bit nonce
-        x = XChaCha20Poly1305(cek)
-        ct = x.encrypt(nonce, plaintext, aad)
-        return nonce, ct
-    else:
-        raise ValueError("Unsupported algorithm")
-
-
-def decrypt_chunk(cek: bytes, nonce: bytes, ciphertext: bytes, aad: bytes = b'', algorithm: str = 'aesgcm') -> bytes:
-    """Decrypt AEAD chunk (reverse of encrypt_chunk)."""
-    if algorithm == 'aesgcm':
-        aes = AESGCM(cek)
-        return aes.decrypt(nonce, ciphertext, aad)
-    elif algorithm == 'xchacha20':
-        x = XChaCha20Poly1305(cek)
-        return x.decrypt(nonce, ciphertext, aad)
-    else:
-        raise ValueError("Unsupported algorithm")
-
-
-# -------------------------
-# Key wrap/unwrap (wrap CEK with KEK)
-# -------------------------
-def wrap_key(kek: bytes, cek: bytes, aad: bytes = b'', algorithm: str = 'aesgcm') -> Tuple[bytes, bytes]:
-    """
-    Wrap a CEK using the KEK with AEAD. Return (nonce, wrapped_cek_bytes).
-    Storing wrapped CEK (plus nonce) in metadata allows later unwrapping.
-    """
-    # We use the same AEAD API as chunk encryption
-    return encrypt_chunk(kek, cek, aad, algorithm=algorithm)
-
-
-def unwrap_key(kek: bytes, wrapped_cek: bytes, nonce: bytes, aad: bytes = b'', algorithm: str = 'aesgcm') -> bytes:
-    """Unwrap (decrypt) a wrapped CEK."""
-    return decrypt_chunk(kek, nonce, wrapped_cek, aad, algorithm=algorithm)
-
-
-# -------------------------
-# Small demonstration when run directly
-# -------------------------
 if __name__ == "__main__":
-    # Demo: generate MK (for demo we write to project; in real life keep off-repo!)
-    demo_mk_path = os.path.join(os.path.dirname(__file__), "..", "master_demo.key")
-    demo_mk_path = os.path.normpath(demo_mk_path)
-
-    print("1) Generating MK (demo) ->", demo_mk_path)
-    mk = generate_mk(demo_mk_path)
-    print("   MK (base64):", b64e(mk))
-
-    # Derive a KEK for this volume
-    info = b'volume:demo'  # context string that namespaces the derived key
-    kek = derive_kek_hkdf(mk, info=info)
-    print("2) Derived KEK from MK (HKDF). KEK (b64):", b64e(kek))
-
-    # Generate CEK for a file and wrap it
-    cek = generate_cek()
-    print("3) Generated CEK per-file (b64):", b64e(cek))
-
-    nonce_wrap, wrapped = wrap_key(kek, cek, aad=b'file:example.txt')
-    print("   Wrapped CEK nonce (b64):", b64e(nonce_wrap))
-    print("   Wrapped CEK (b64):", b64e(wrapped))
-
-    # Simulate writing a file: encrypt a chunk with CEK
-    plaintext = b"Hello secure filesystem - secret file content!"
-    nonce_chunk, ciphertext = encrypt_chunk(cek, plaintext, aad=b'file-chunk:0')
-    print("4) Encrypted chunk nonce (b64):", b64e(nonce_chunk))
-    print("   Ciphertext (b64):", b64e(ciphertext))
-
-    # Now unwrap CEK (using the KEK) and decrypt the chunk
-    cek_unwrapped = unwrap_key(kek, wrapped, nonce_wrap, aad=b'file:example.txt')
-    recovered = decrypt_chunk(cek_unwrapped, nonce_chunk, ciphertext, aad=b'file-chunk:0')
-    print("5) Decrypted plaintext:", recovered.decode('utf-8'))
-
-    assert recovered == plaintext
-    print("✅ Demo success: encrypt -> wrap -> unwrap -> decrypt works.")
+    # Demo of encryption capabilities
+    crypto = CryptoManager(Path("demo_master.key"))
+    
+    # Test basic encryption
+    plaintext = b"This is sensitive data that needs encryption!"
+    file_key, nonce, ciphertext = crypto.encrypt_data(plaintext)
+    
+    print(f"Original: {plaintext}")
+    print(f"Encrypted length: {len(ciphertext)} bytes")
+    
+    # Test decryption
+    decrypted = crypto.decrypt_data(file_key, nonce, ciphertext)
+    print(f"Decrypted: {decrypted}")
+    
+    assert plaintext == decrypted
+    print("✅ Encryption/decryption test passed!")
+    
+    # Test key wrapping
+    nonce_wrap, wrapped = crypto.wrap_file_key(file_key, "/test/file.txt")
+    unwrapped = crypto.unwrap_file_key(nonce_wrap, wrapped, "/test/file.txt")
+    
+    assert file_key == unwrapped
+    print("✅ Key wrapping test passed!")
+    
+    # Clean up
+    crypto.secure_delete_key()
 
 

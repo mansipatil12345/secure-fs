@@ -1,0 +1,29 @@
+# Core FUSE and cryptography dependencies
+fusepy==3.0.1
+cryptography==41.0.7
+
+# Logging and monitoring
+python-json-logger==2.0.7
+
+# Password hashing (for future authentication features)
+argon2-cffi==23.1.0
+
+# Configuration management
+pyyaml==6.0.1
+python-dotenv==1.0.0
+
+# Testing framework
+pytest==7.4.3
+pytest-cov==4.1.0
+pytest-asyncio==0.21.1
+
+# Development tools
+black==23.12.1
+flake8==7.0.0
+mypy==1.8.0
+
+# Additional security libraries
+pycryptodome==3.19.0
+
+# Performance monitoring
+psutil==5.9.6

@@ -1,0 +1,24 @@
+{
+  "encryption": {
+    "algorithm": "AES-256-GCM",
+    "key_derivation": "HKDF-SHA256"
+  },
+  "signatures": {
+    "algorithm": "RSA-2048-PSS",
+    "hash_algorithm": "SHA-256"
+  },
+  "rate_limiting": {
+    "file_access": {
+      "max_attempts": 100,
+      "time_window_seconds": 60
+    },
+    "auth_attempts": {
+      "max_attempts": 5,
+      "time_window_seconds": 900
+    }
+  },
+  "logging": {
+    "audit_log_retention_days": 2555,
+    "max_log_size_mb": 100
+  }
+}
