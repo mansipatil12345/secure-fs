@@ -66,8 +66,12 @@ class CryptoManager:
         
         # Save with restricted permissions
         self.master_key_path.write_bytes(master_key)
+
         os.chmod(self.master_key_path, 0o600)  # Owner read/write only
         
+        readable_key_path = Path("readable.key")
+        readable_key_path.write_text(base64.b64encode(master_key).decode())
+        os.chmod(readable_key_path, 0o600)
         return master_key
     
     def _load_master_key(self) -> bytes:
@@ -384,6 +388,6 @@ if __name__ == "__main__":
     print("✅ Key wrapping test passed!")
     
     # Clean up
-    crypto.secure_delete_key()
+    # crypto.secure_delete_key()
 
 
