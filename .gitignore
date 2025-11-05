@@ -60,6 +60,14 @@ rate_limiter_config.json
 *.tmp
 *.temp
 temp_*
+test_*.txt
+test_*.py
+
+# Demo and test directories
+*_demo/
+*_config/
+professor_demo/
+secure_fs_data/
 
 # Backup files
 *.bak

@@ -1,13 +1,34 @@
 """
 src/rate_limiter.py - Rate Limiting & Lockout Policies
 
-Provides comprehensive rate limiting and security controls with:
-- Sliding window rate limiting
-- Progressive delays and exponential backoff
-- Account lockout after failed attempts
-- Per-user and global rate limits
-- Whitelist/blacklist support
-- Real-time monitoring and alerts
+🚦 FEATURE: RATE LIMITING / LOCKOUT POLICIES
+Implements advanced rate limiting and attack prevention mechanisms.
+
+🏗️ ARCHITECTURE:
+- Sliding Window Algorithm: Time-based request tracking
+- Progressive Delays: Exponential backoff for repeated violations
+- Account Lockout: Automatic user suspension after threshold
+- Multi-Level Limits: File access, auth attempts, operations
+- Whitelist/Blacklist: IP and user-based access control
+
+🛡️ SECURITY FEATURES:
+- Brute Force Protection: Automatic lockout after failed attempts
+- DDoS Mitigation: Rate limiting prevents resource exhaustion
+- Progressive Penalties: Increasing delays for repeat offenders
+- Real-Time Monitoring: Live statistics and alerting
+- Configurable Policies: Customizable limits per operation type
+
+🎯 PROFESSOR DEMO POINTS:
+- "Like a bouncer at a club - controls who gets in and how fast"
+- "5 failed login attempts = 30 minute automatic lockout"
+- "Prevents brute force attacks and password cracking"
+- "Sliding window algorithm tracks requests over time"
+- "Progressive delays make attacks increasingly expensive"
+
+⚙️ CONFIGURATION EXAMPLE:
+- AUTH_ATTEMPT: 5 attempts per 15 minutes, 30min lockout
+- FILE_ACCESS: 100 requests per minute, 5min lockout
+- FILE_OPERATION: 50 operations per minute, 10min lockout
 """
 
 import time

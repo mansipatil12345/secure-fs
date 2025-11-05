@@ -30,6 +30,13 @@ class InteractiveDemo:
         
         print("🔒 SECURE FILE SYSTEM - LIVE DEMO")
         print("=" * 50)
+        
+        # Show current IST time
+        from datetime import timezone, timedelta
+        ist_timezone = timezone(timedelta(hours=5, minutes=30))
+        current_ist = datetime.now(ist_timezone)
+        print(f"🕐 Demo started at: {current_ist.strftime('%Y-%m-%d %H:%M:%S IST')}")
+        
         print("Ready to demonstrate with any file!")
         print("=" * 50)
     
@@ -85,7 +92,13 @@ class InteractiveDemo:
             print(f"❌ Storage failed: {store_result.error_message}")
             return False
         
+        # Show completion time in IST
+        from datetime import timezone, timedelta
+        ist_timezone = timezone(timedelta(hours=5, minutes=30))
+        completion_time = datetime.now(ist_timezone)
+        
         print(f"   ✅ File encrypted and stored securely!")
+        print(f"   🕐 Completed at: {completion_time.strftime('%H:%M:%S IST')}")
         print(f"   📁 Unique File ID: {store_result.file_id}")
         print(f"   🔒 Encrypted filename: {Path(store_result.encrypted_path).name}")
         print(f"   🔍 SHA-256 Checksum: {store_result.checksum[:16]}...")
@@ -133,7 +146,13 @@ class InteractiveDemo:
             decrypted_content = output_file.read_text()
             integrity_check = original_content == decrypted_content
             
+            # Show decryption completion time (redefine ist_timezone in this scope)
+            from datetime import timezone, timedelta
+            ist_timezone = timezone(timedelta(hours=5, minutes=30))
+            decryption_time = datetime.now(ist_timezone)
+            
             print(f"   ✅ File decrypted successfully!")
+            print(f"   🕐 Decrypted at: {decryption_time.strftime('%H:%M:%S IST')}")
             print(f"   🔍 Integrity verification: {'✅ PASSED' if integrity_check else '❌ FAILED'}")
             print(f"   📄 Content matches exactly: {integrity_check}")
             print(f"   ⏱️  Decryption time: {retrieve_result.processing_time:.3f} seconds")
@@ -158,14 +177,41 @@ class InteractiveDemo:
         audit_trail = self.processor.audit_logger.get_audit_trail(str(source_file), limit=10)
         
         print(f"   📜 Complete audit trail ({len(audit_trail)} events):")
-        for i, event in enumerate(audit_trail[-3:], 1):  # Show last 3 events
-            timestamp = datetime.fromisoformat(event['timestamp']).strftime('%H:%M:%S')
-            print(f"      {i}. {timestamp} - {event['event_type']}")
-            print(f"         User: {event['user_id']}, Status: {event['status']}")
         
-        # Generate compliance report
-        start_time = datetime.now().replace(hour=0, minute=0, second=0)
-        end_time = datetime.now()
+        # Import timezone for IST conversion
+        from datetime import timezone, timedelta
+        
+        # IST is UTC+5:30
+        ist_timezone = timezone(timedelta(hours=5, minutes=30))
+        
+        for i, event in enumerate(audit_trail[-10:], 1):  # Show last 10 events
+            # Parse UTC timestamp and convert to IST
+            utc_time = datetime.fromisoformat(event['timestamp'].replace('Z', '+00:00'))
+            ist_time = utc_time.astimezone(ist_timezone)
+            
+            # Format as readable IST timestamp
+            readable_timestamp = ist_time.strftime('%Y-%m-%d %H:%M:%S IST')
+            time_only = ist_time.strftime('%H:%M:%S')
+            
+            print(f"      {i}. {time_only} - {event['event_type']}")
+            print(f"         👤 User: {event['user_id']}")
+            print(f"         📅 Full timestamp: {readable_timestamp}")
+            print(f"         ✅ Status: {event['status']}")
+            
+            # Show additional details for key events
+            if event.get('details') and event['event_type'] in ['FILE_CREATE', 'FILE_ACCESS']:
+                details = event['details']
+                if 'file_id' in details:
+                    print(f"         🆔 File ID: {details['file_id'][:8]}...")
+                if 'file_size' in details:
+                    print(f"         📏 Size: {details['file_size']:,} bytes")
+            print()  # Empty line for readability
+        
+        # Generate compliance report (use timezone-aware datetimes)
+        from datetime import timezone
+        current_utc = datetime.now(timezone.utc)
+        start_time = current_utc.replace(hour=0, minute=0, second=0, microsecond=0)
+        end_time = current_utc
         
         report = self.processor.audit_logger.generate_compliance_report(start_time, end_time)
         print(f"   📊 Compliance Report Generated:")

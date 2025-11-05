@@ -1,12 +1,36 @@
 """
 src/metadata.py - Secure Metadata Protection
 
-Provides encrypted metadata management with:
-- Encrypted filenames and attributes
-- Secure metadata storage with integrity checks
-- Fast lookup and indexing
-- Atomic operations for consistency
-- Backup and recovery capabilities
+🗃️ FEATURE: SECURE METADATA PROTECTION
+Implements encrypted metadata management to protect file system information.
+
+🏗️ ARCHITECTURE:
+- Encrypted Filenames: Original names encrypted and obfuscated
+- Secure Attributes: File size, dates, permissions encrypted
+- Metadata Database: Encrypted JSON storage with integrity checks
+- Fast Indexing: In-memory cache for performance
+- Atomic Operations: ACID-compliant metadata updates
+
+🛡️ SECURITY FEATURES:
+- Metadata Encryption: All file information encrypted at rest
+- Filename Obfuscation: Original paths hidden from attackers
+- Integrity Verification: Checksums prevent metadata tampering
+- Access Control: User-based metadata isolation
+- Backup Protection: Encrypted metadata backups
+
+🎯 PROFESSOR DEMO POINTS:
+- "Even file names and sizes are encrypted and hidden"
+- "Attackers can't see what files exist or their properties"
+- "Like encrypting the table of contents of a book"
+- "Fast lookups despite encryption through smart caching"
+- "Atomic operations ensure metadata consistency"
+
+💡 METADATA PROTECTED:
+- Original file paths and names
+- File sizes and timestamps
+- User ownership and permissions
+- Custom tags and attributes
+- Access history and statistics
 """
 
 import json
@@ -164,14 +188,17 @@ class SecureMetadataManager:
                 return
             
             # Read and decrypt metadata file
-            with open(self.metadata_file, 'rb') as f:
-                metadata_dict = self.crypto_manager.decrypt_file_stream(
-                    f, None, str(self.metadata_file)
-                )
+            import io
+            with open(self.metadata_file, 'rb') as input_file:
+                with io.BytesIO() as output_stream:
+                    self.crypto_manager.decrypt_file_stream(
+                        input_file, output_stream, str(self.metadata_file)
+                    )
+                    metadata_bytes = output_stream.getvalue()
             
             # Parse metadata
-            if metadata_dict:
-                metadata_json = json.loads(metadata_dict.decode('utf-8'))
+            if metadata_bytes:
+                metadata_json = json.loads(metadata_bytes.decode('utf-8'))
                 
                 for file_id, metadata_data in metadata_json.items():
                     metadata = FileMetadata(**metadata_data)
@@ -202,10 +229,13 @@ class SecureMetadataManager:
             metadata_json = json.dumps(metadata_dict, indent=2)
             
             # Encrypt and save
-            with open(self.metadata_file, 'wb') as f:
-                self.crypto_manager.encrypt_file_stream(
-                    metadata_json.encode('utf-8'), f, str(self.metadata_file)
-                )
+            import io
+            metadata_bytes = metadata_json.encode('utf-8')
+            with io.BytesIO(metadata_bytes) as input_stream:
+                with open(self.metadata_file, 'wb') as output_file:
+                    self.crypto_manager.encrypt_file_stream(
+                        input_stream, output_file, str(self.metadata_file)
+                    )
             
             # Create integrity record
             integrity_record = self.integrity_checker.create_integrity_record(

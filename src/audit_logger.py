@@ -1,12 +1,35 @@
 """
 src/audit_logger.py - Access Auditing & Logging
 
-Provides comprehensive audit logging for compliance with:
-- GDPR Article 30 (Records of processing)
-- HIPAA §164.312(b) (Audit controls)
-- Structured JSON logging with tamper detection
-- Real-time security event monitoring
-- Compliance report generation
+📋 FEATURE: ACCESS AUDITING & LOGGING
+Implements comprehensive audit logging for regulatory compliance and security monitoring.
+
+🏗️ ARCHITECTURE:
+- Structured JSON Logging: Machine-readable audit records
+- Tamper-Evident Logs: Cryptographic checksums for integrity
+- Async Logging: High-performance non-blocking writes
+- Event Classification: File, Security, Auth, System events
+- Compliance Reporting: Automated GDPR/HIPAA reports
+
+🛡️ SECURITY FEATURES:
+- SHA-256 Checksums: Tamper detection for log entries
+- Unique Event IDs: UUID-based event tracking
+- Timestamp Precision: Microsecond-accurate UTC timestamps
+- Thread-Safe Operations: Concurrent logging support
+- Log Rotation: Automatic size-based log management
+
+🎯 PROFESSOR DEMO POINTS:
+- "Every file access logged with WHO, WHAT, WHEN, WHERE"
+- "GDPR Article 30 compliant - required for EU data protection"
+- "HIPAA §164.312(b) compliant - required for healthcare data"
+- "Tamper-evident logs detect any modification attempts"
+- "Real-time security monitoring and alerting"
+
+📊 COMPLIANCE STANDARDS:
+- GDPR Article 30: Records of processing activities
+- HIPAA §164.312(b): Audit controls and monitoring
+- SOX Section 404: Internal controls over financial reporting
+- ISO 27001: Information security audit requirements
 """
 
 import json

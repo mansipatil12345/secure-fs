@@ -1,5 +1,29 @@
 """
-src/integrity.py - Digital Signatures & Checksums (fixed)
+src/integrity.py - Digital Signatures and Integrity Verification
+
+🔍 FEATURE: DIGITAL SIGNATURES & CHECKSUMS
+Implements RSA-2048 digital signatures and SHA-256 checksums for tamper detection.
+
+🏗️ ARCHITECTURE:
+- RSA-2048 Key Pairs: Public/private key cryptography
+- SHA-256 Hashing: Cryptographic fingerprinting
+- PKCS#1 v1.5 Padding: Industry-standard signature scheme
+- Signature Envelopes: Structured signature metadata
+- Streaming Verification: Memory-efficient for large files
+
+🛡️ SECURITY FEATURES:
+- RSA-2048: 2048-bit key strength (recommended until 2030)
+- SHA-256: Collision-resistant cryptographic hash function
+- Digital Signatures: Non-repudiation and authenticity proof
+- Checksum Verification: Detects any bit-level changes
+- Tamper Detection: Immediate detection of file modifications
+
+🎯 PROFESSOR DEMO POINTS:
+- "Like a wax seal on an envelope - detects any tampering"
+- "SHA-256 checksum changes if even 1 bit is modified"
+- "RSA signature proves WHO created the file"
+- "Mathematically impossible to forge without private key"
+- "Used by banks and governments for document integrity"
 
 Provides comprehensive integrity verification with:
 - SHA-256 checksums for fast integrity checks
@@ -501,8 +525,8 @@ if __name__ == "__main__":
 
     # Create a test file
     test_file = Path("test_integrity.txt")
-    test_data = b"This is a test file for integrity checking!"
-    test_file.write_bytes(test_data)
+    # test_data = b"This is a test file for integrity checking!"
+    # test_file.write_bytes(test_data)
 
     print("🔐 Integrity Checker Demo")
     print(f"Test file: {test_file}")
@@ -544,7 +568,7 @@ if __name__ == "__main__":
     print(f"Integrity after tampering: {'✅ VALID' if verification_after['overall_valid'] else '❌ INVALID'}")
 
     #Clean up
-    test_file.unlink()
-    checker.secure_delete_keys()
+    # test_file.unlink()
+    # checker.secure_delete_keys()
 
     print("\n✅ Integrity checker demo completed!")
